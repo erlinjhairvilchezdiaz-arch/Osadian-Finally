@@ -3,9 +3,9 @@ import Sidebar from "../components/Sidebar";
 import { supabase } from "../lib/supabase";
 import { colors, fonts, FONT_IMPORT } from "../styles/theme";
 
-// ============================================================
-// COMPONENTE: BADGE DE STOCK
-// ============================================================
+/* =========================================================
+   BADGE DE STOCK
+========================================================= */
 function StockBadge({ stock, minimo }) {
   let bg = colors.sageBg;
   let color = colors.sageText;
@@ -37,9 +37,9 @@ function StockBadge({ stock, minimo }) {
   );
 }
 
-// ============================================================
-// FORMULARIO VACÍO
-// ============================================================
+/* =========================================================
+   FORMULARIO VACÍO
+========================================================= */
 const emptyForm = {
   id: null,
   nombre: "",
@@ -52,11 +52,11 @@ const emptyForm = {
   stock_minimo: 3,
 };
 
-// ============================================================
-// FUNCIONES AUXILIARES
-// ============================================================
-function normHeader(value) {
-  return String(value ?? "")
+/* =========================================================
+   UTILIDADES
+========================================================= */
+function normHeader(v) {
+  return String(v ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
@@ -65,40 +65,40 @@ function normHeader(value) {
 }
 
 function findColumn(headers, aliases) {
-  const normalizedHeaders = headers.map(normHeader);
+  const normalized = headers.map(normHeader);
 
   for (const alias of aliases) {
-    const index = normalizedHeaders.indexOf(normHeader(alias));
+    const idx = normalized.indexOf(normHeader(alias));
 
-    if (index >= 0) {
-      return headers[index];
+    if (idx >= 0) {
+      return headers[idx];
     }
   }
 
   return null;
 }
 
-function cleanText(value) {
-  return value == null ? "" : String(value).trim();
+function cleanText(v) {
+  return v == null ? "" : String(v).trim();
 }
 
-function num(value, fallback = 0) {
-  if (value == null || String(value).trim() === "") {
+function num(v, fallback = 0) {
+  if (v == null || String(v).trim() === "") {
     return fallback;
   }
 
-  const number = Number(
-    String(value)
+  const n = Number(
+    String(v)
       .replace(/,/g, ".")
       .replace(/[^0-9.-]/g, "")
   );
 
-  return Number.isFinite(number) ? number : fallback;
+  return Number.isFinite(n) ? n : fallback;
 }
 
-// ============================================================
-// COMPONENTE PRINCIPAL
-// ============================================================
+/* =========================================================
+   COMPONENTE PRINCIPAL
+========================================================= */
 export default function Inventario() {
   const [products, setProducts] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -110,16 +110,21 @@ export default function Inventario() {
   const [showForm, setShowForm] = useState(false);
 
   const [form, setForm] = useState(emptyForm);
-
   const [saving, setSaving] = useState(false);
+
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
 
+  /* =======================================================
+     SELECCIÓN MÚLTIPLE
+  ======================================================= */
+  const [selectedIds, setSelectedIds] = useState([]);
+
   const fileRef = useRef(null);
 
-  // ==========================================================
-  // CARGAR PRODUCTOS Y CATEGORÍAS
-  // ==========================================================
+  /* =========================================================
+     CARGAR DATOS
+  ========================================================= */
   useEffect(() => {
     cargar();
   }, []);
@@ -153,61 +158,103 @@ export default function Inventario() {
 
     setProducts(prods || []);
     setCategorias(cats || []);
+
+    // Limpiar selección después de recargar
+    setSelectedIds([]);
+
     setLoading(false);
   }
 
-  // ==========================================================
-  // FILTRAR PRODUCTOS
-  // ==========================================================
-  const filtered = products.filter((product) => {
-    const search = query.toLowerCase();
+  /* =========================================================
+     FILTRADO
+  ========================================================= */
+  const filtered = products.filter((p) => {
+    const q = query.toLowerCase();
 
-    const matchesSearch =
-      (product.nombre || "").toLowerCase().includes(search) ||
-      (product.marca || "").toLowerCase().includes(search) ||
-      (product.codigo_barras || "")
-        .toString()
-        .includes(query);
+    const coincideBusqueda =
+      (p.nombre || "").toLowerCase().includes(q) ||
+      (p.marca || "").toLowerCase().includes(q) ||
+      (p.codigo_barras || "").toString().includes(query);
 
-    const matchesCategory =
+    const coincideCategoria =
       catFiltro === "Todas" ||
-      product.categorias?.nombre === catFiltro;
+      p.categorias?.nombre === catFiltro;
 
-    return matchesSearch && matchesCategory;
+    return coincideBusqueda && coincideCategoria;
   });
 
-  // ==========================================================
-  // ABRIR EDICIÓN
-  // ==========================================================
-  function abrirEditar(product) {
+  /* =========================================================
+     SELECCIONAR / DESELECCIONAR PRODUCTO
+  ========================================================= */
+  function toggleSeleccion(id) {
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((item) => item !== id);
+      }
+
+      return [...prev, id];
+    });
+  }
+
+  /* =========================================================
+     SELECCIONAR TODOS LOS PRODUCTOS VISIBLES
+  ========================================================= */
+  function toggleSeleccionTodos() {
+    const filteredIds = filtered.map((p) => p.id);
+
+    const todosSeleccionados =
+      filteredIds.length > 0 &&
+      filteredIds.every((id) => selectedIds.includes(id));
+
+    if (todosSeleccionados) {
+      // Quitar selección de los productos visibles
+      setSelectedIds((prev) =>
+        prev.filter((id) => !filteredIds.includes(id))
+      );
+    } else {
+      // Agregar todos los productos visibles
+      setSelectedIds((prev) => [
+        ...new Set([...prev, ...filteredIds]),
+      ]);
+    }
+  }
+
+  const todosSeleccionados =
+    filtered.length > 0 &&
+    filtered.every((p) => selectedIds.includes(p.id));
+
+  /* =========================================================
+     EDITAR PRODUCTO
+  ========================================================= */
+  function abrirEditar(p) {
     setForm({
-      id: product.id,
-      nombre: product.nombre || "",
-      marca: product.marca || "",
-      categoria_id: product.categoria_id || "",
-      precio: product.precio ?? "",
-      costo: product.costo ?? "",
-      stock: product.stock ?? "",
-      codigo_barras: product.codigo_barras || "",
-      stock_minimo: product.stock_minimo ?? 3,
+      id: p.id,
+      nombre: p.nombre,
+      marca: p.marca || "",
+      categoria_id: p.categoria_id || "",
+      precio: p.precio,
+      costo: p.costo || 0,
+      stock: p.stock,
+      codigo_barras: p.codigo_barras || "",
+      stock_minimo: p.stock_minimo,
     });
 
     setShowForm(true);
   }
 
-  // ==========================================================
-  // GUARDAR PRODUCTO
-  // ==========================================================
-  async function guardar(event) {
-    event.preventDefault();
+  /* =========================================================
+     GUARDAR PRODUCTO
+  ========================================================= */
+  async function guardar(e) {
+    e.preventDefault();
+
     setSaving(true);
 
     const payload = {
-      nombre: form.nombre.trim(),
-      marca: form.marca.trim(),
+      nombre: form.nombre,
+      marca: form.marca,
       categoria_id: form.categoria_id || null,
 
-      // IMPORTANTE: convertir correctamente a número
       precio: num(form.precio),
       costo: num(form.costo),
 
@@ -216,7 +263,7 @@ export default function Inventario() {
         Math.trunc(num(form.stock))
       ),
 
-      codigo_barras: form.codigo_barras.trim() || null,
+      codigo_barras: form.codigo_barras || null,
 
       stock_minimo: Math.max(
         0,
@@ -224,7 +271,7 @@ export default function Inventario() {
       ),
     };
 
-    const result = form.id
+    const { error } = form.id
       ? await supabase
           .from("productos")
           .update(payload)
@@ -233,8 +280,8 @@ export default function Inventario() {
           .from("productos")
           .insert(payload);
 
-    if (result.error) {
-      alert(result.error.message);
+    if (error) {
+      alert(error.message);
     } else {
       setShowForm(false);
       setForm(emptyForm);
@@ -244,9 +291,9 @@ export default function Inventario() {
     setSaving(false);
   }
 
-  // ==========================================================
-  // ELIMINAR PRODUCTO
-  // ==========================================================
+  /* =========================================================
+     ELIMINAR UN PRODUCTO
+  ========================================================= */
   async function eliminar(id) {
     if (!confirm("¿Eliminar este producto?")) {
       return;
@@ -264,9 +311,46 @@ export default function Inventario() {
     }
   }
 
-  // ==========================================================
-  // IMPORTAR EXCEL
-  // ==========================================================
+  /* =========================================================
+     ELIMINAR VARIOS PRODUCTOS
+  ========================================================= */
+  async function eliminarSeleccionados() {
+    if (selectedIds.length === 0) {
+      return;
+    }
+
+    const cantidad = selectedIds.length;
+
+    const confirmar = confirm(
+      `¿Eliminar ${cantidad} producto${cantidad !== 1 ? "s" : ""} seleccionado${cantidad !== 1 ? "s" : ""}?`
+    );
+
+    if (!confirmar) {
+      return;
+    }
+
+    setLoading(true);
+
+    const { error } = await supabase
+      .from("productos")
+      .update({ activo: false })
+      .in("id", selectedIds);
+
+    if (error) {
+      console.error(error);
+      alert(`No se pudieron eliminar los productos: ${error.message}`);
+      setLoading(false);
+      return;
+    }
+
+    setSelectedIds([]);
+
+    await cargar();
+  }
+
+  /* =========================================================
+     IMPORTAR EXCEL
+  ========================================================= */
   async function importarExcel(file) {
     if (!file) return;
 
@@ -295,11 +379,11 @@ export default function Inventario() {
         defval: "",
       });
 
-      // --------------------------------------------------------
-      // BUSCAR ENCABEZADOS
-      // --------------------------------------------------------
-      const headerIndex = rows.findIndex((row) => {
-        const joined = row.map(normHeader).join("|");
+      /* -----------------------------------------------------
+         BUSCAR ENCABEZADOS
+      ----------------------------------------------------- */
+      const headerIndex = rows.findIndex((r) => {
+        const joined = r.map(normHeader).join("|");
 
         return (
           joined.includes("NOMBRE") &&
@@ -316,13 +400,12 @@ export default function Inventario() {
       }
 
       const headers = rows[headerIndex].map(
-        (header, index) =>
-          cleanText(header) || `COL_${index}`
+        (h, i) => cleanText(h) || `COL_${i}`
       );
 
-      // --------------------------------------------------------
-      // IDENTIFICAR COLUMNAS
-      // --------------------------------------------------------
+      /* -----------------------------------------------------
+         DETECTAR COLUMNAS
+      ----------------------------------------------------- */
       const col = {
         nombre: findColumn(headers, [
           "NOMBRE",
@@ -379,36 +462,36 @@ export default function Inventario() {
         );
       }
 
-      // --------------------------------------------------------
-      // CONVERTIR FILAS
-      // --------------------------------------------------------
+      /* -----------------------------------------------------
+         CONVERTIR FILAS
+      ----------------------------------------------------- */
       const records = rows
         .slice(headerIndex + 1)
-        .map((row) => ({
+        .map((r) => ({
           nombre: cleanText(
-            row[headers.indexOf(col.nombre)]
+            r[headers.indexOf(col.nombre)]
           ),
 
           marca: cleanText(
-            row[headers.indexOf(col.marca)]
+            r[headers.indexOf(col.marca)]
           ),
 
           codigo: cleanText(
-            row[headers.indexOf(col.codigo)]
+            r[headers.indexOf(col.codigo)]
           ),
 
           precio: num(
-            row[headers.indexOf(col.precio)]
+            r[headers.indexOf(col.precio)]
           ),
 
           costo: num(
-            row[headers.indexOf(col.costo)]
+            r[headers.indexOf(col.costo)]
           ),
 
           stock: Math.max(
             0,
             Math.trunc(
-              num(row[headers.indexOf(col.stock)])
+              num(r[headers.indexOf(col.stock)])
             )
           ),
 
@@ -416,56 +499,55 @@ export default function Inventario() {
             0,
             Math.trunc(
               num(
-                row[headers.indexOf(col.minimo)],
+                r[headers.indexOf(col.minimo)],
                 3
               )
             )
           ),
 
           categoria: cleanText(
-            row[headers.indexOf(col.categoria)]
+            r[headers.indexOf(col.categoria)]
           ),
         }))
-        .filter((record) => record.nombre);
+        .filter((r) => r.nombre);
 
-      // --------------------------------------------------------
-      // ELIMINAR DUPLICADOS
-      // --------------------------------------------------------
+      /* -----------------------------------------------------
+         EVITAR DUPLICADOS
+      ----------------------------------------------------- */
       const unique = [];
       const seen = new Set();
 
-      for (const record of records) {
+      for (const r of records) {
         const key =
-          record.codigo ||
-          `name:${record.nombre.toUpperCase()}`;
+          r.codigo ||
+          `name:${r.nombre.toUpperCase()}`;
 
         if (!seen.has(key)) {
           seen.add(key);
-          unique.push(record);
+          unique.push(r);
         }
       }
 
-      // --------------------------------------------------------
-      // CREAR CATEGORÍAS
-      // --------------------------------------------------------
+      /* -----------------------------------------------------
+         CREAR CATEGORÍAS
+      ----------------------------------------------------- */
       const categoryNames = [
         ...new Set(
           unique
-            .map((record) => record.categoria)
+            .map((r) => r.categoria)
             .filter(Boolean)
         ),
       ];
 
       if (categoryNames.length) {
-        const { error: catError } =
-          await supabase
-            .from("categorias")
-            .insert(
-              categoryNames.map((nombre) => ({
-                nombre,
-              }))
-            )
-            .select();
+        const { error: catError } = await supabase
+          .from("categorias")
+          .insert(
+            categoryNames.map((nombre) => ({
+              nombre,
+            }))
+          )
+          .select();
 
         if (
           catError &&
@@ -477,9 +559,9 @@ export default function Inventario() {
         }
       }
 
-      // --------------------------------------------------------
-      // OBTENER CATEGORÍAS
-      // --------------------------------------------------------
+      /* -----------------------------------------------------
+         MAPA DE CATEGORÍAS
+      ----------------------------------------------------- */
       const {
         data: cats,
         error: catsError,
@@ -492,47 +574,47 @@ export default function Inventario() {
       }
 
       const catMap = Object.fromEntries(
-        (cats || []).map((category) => [
-          normHeader(category.nombre),
-          category.id,
+        (cats || []).map((c) => [
+          normHeader(c.nombre),
+          c.id,
         ])
       );
 
-      // --------------------------------------------------------
-      // PREPARAR PRODUCTOS
-      // --------------------------------------------------------
-      const payload = unique.map((record) => ({
-        nombre: record.nombre,
-        marca: record.marca,
+      /* -----------------------------------------------------
+         CREAR PAYLOAD
+      ----------------------------------------------------- */
+      const payload = unique.map((r) => ({
+        nombre: r.nombre,
+        marca: r.marca,
 
         categoria_id:
-          catMap[normHeader(record.categoria)] ||
-          null,
+          catMap[normHeader(r.categoria)] || null,
 
-        precio: record.precio,
-        costo: record.costo,
-        stock: record.stock,
+        precio: r.precio,
+        costo: r.costo,
+        stock: r.stock,
 
         codigo_barras:
-          record.codigo || null,
+          r.codigo || null,
 
-        stock_minimo: record.minimo,
+        stock_minimo: r.minimo,
+
         activo: true,
       }));
 
       const withCode = payload.filter(
-        (product) => product.codigo_barras
+        (r) => r.codigo_barras
       );
 
       const withoutCode = payload.filter(
-        (product) => !product.codigo_barras
+        (r) => !r.codigo_barras
       );
 
       let addedOrUpdated = 0;
 
-      // --------------------------------------------------------
-      // PRODUCTOS CON CÓDIGO
-      // --------------------------------------------------------
+      /* -----------------------------------------------------
+         PRODUCTOS CON CÓDIGO
+      ----------------------------------------------------- */
       if (withCode.length) {
         const { error } = await supabase
           .from("productos")
@@ -547,9 +629,9 @@ export default function Inventario() {
         addedOrUpdated += withCode.length;
       }
 
-      // --------------------------------------------------------
-      // PRODUCTOS SIN CÓDIGO
-      // --------------------------------------------------------
+      /* -----------------------------------------------------
+         PRODUCTOS SIN CÓDIGO
+      ----------------------------------------------------- */
       if (withoutCode.length) {
         const { error } = await supabase
           .from("productos")
@@ -569,13 +651,13 @@ export default function Inventario() {
       });
 
       await cargar();
-    } catch (error) {
-      console.error(error);
+    } catch (e) {
+      console.error(e);
 
       setImportResult({
         ok: false,
         error:
-          error.message ||
+          e.message ||
           "No se pudo importar el archivo.",
       });
     } finally {
@@ -587,9 +669,9 @@ export default function Inventario() {
     }
   }
 
-  // ==========================================================
-  // RENDER
-  // ==========================================================
+  /* =========================================================
+     RENDER
+  ========================================================= */
   return (
     <div
       style={{
@@ -611,9 +693,9 @@ export default function Inventario() {
           maxWidth: 1200,
         }}
       >
-        {/* ====================================================
-            ENCABEZADO
-        ==================================================== */}
+        {/* =================================================
+            CABECERA
+        ================================================= */}
         <div
           data-mobile-stack="true"
           style={{
@@ -687,9 +769,9 @@ export default function Inventario() {
               ref={fileRef}
               type="file"
               accept=".xlsx,.xls"
-              onChange={(event) =>
+              onChange={(e) =>
                 importarExcel(
-                  event.target.files?.[0]
+                  e.target.files?.[0]
                 )
               }
               style={{ display: "none" }}
@@ -716,14 +798,15 @@ export default function Inventario() {
               }}
             >
               <i className="ti ti-plus" />
+
               Nuevo producto
             </button>
           </div>
         </div>
 
-        {/* ====================================================
-            RESULTADO DE IMPORTACIÓN
-        ==================================================== */}
+        {/* =================================================
+            RESULTADO IMPORTACIÓN
+        ================================================= */}
         {importResult && (
           <div
             style={{
@@ -747,9 +830,9 @@ export default function Inventario() {
           </div>
         )}
 
-        {/* ====================================================
-            BUSCADOR Y FILTROS
-        ==================================================== */}
+        {/* =================================================
+            BUSCADOR + CATEGORÍAS + ELIMINAR
+        ================================================= */}
         <div
           data-mobile-stack="true"
           style={{
@@ -782,8 +865,8 @@ export default function Inventario() {
 
             <input
               value={query}
-              onChange={(event) =>
-                setQuery(event.target.value)
+              onChange={(e) =>
+                setQuery(e.target.value)
               }
               placeholder="Buscar por nombre, marca o código"
               style={{
@@ -810,13 +893,13 @@ export default function Inventario() {
             {[
               "Todas",
               ...categorias.map(
-                (category) => category.nombre
+                (c) => c.nombre
               ),
-            ].map((category) => (
+            ].map((c) => (
               <button
-                key={category}
+                key={c}
                 onClick={() =>
-                  setCatFiltro(category)
+                  setCatFiltro(c)
                 }
                 style={{
                   padding: "8px 14px",
@@ -827,25 +910,64 @@ export default function Inventario() {
                   cursor: "pointer",
 
                   background:
-                    catFiltro === category
+                    catFiltro === c
                       ? colors.plum
                       : colors.card,
 
                   color:
-                    catFiltro === category
+                    catFiltro === c
                       ? colors.bg
                       : colors.textMuted,
                 }}
               >
-                {category}
+                {c}
               </button>
             ))}
           </div>
+
+          {/* =================================================
+              BOTÓN ELIMINAR SELECCIONADOS
+          ================================================= */}
+          {selectedIds.length > 0 && (
+            <button
+              onClick={eliminarSeleccionados}
+              disabled={loading}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+
+                background: colors.redBg,
+                color: colors.red,
+
+                border: `1px solid ${colors.red}`,
+                borderRadius: 8,
+
+                padding: "9px 14px",
+
+                fontSize: 13,
+                fontWeight: 600,
+
+                cursor: loading
+                  ? "not-allowed"
+                  : "pointer",
+
+                opacity: loading ? 0.6 : 1,
+
+                whiteSpace: "nowrap",
+              }}
+            >
+              <i className="ti ti-trash" />
+
+              Eliminar seleccionados (
+              {selectedIds.length})
+            </button>
+          )}
         </div>
 
-        {/* ====================================================
+        {/* =================================================
             TABLA
-        ==================================================== */}
+        ================================================= */}
         <div
           data-scroll-table="true"
           style={{
@@ -860,18 +982,46 @@ export default function Inventario() {
               width: "100%",
               borderCollapse: "collapse",
               fontSize: 13.5,
-              minWidth: 850,
+              minWidth: 900,
             }}
           >
-            {/* ------------------------------------------------
-                ENCABEZADO
-            ------------------------------------------------ */}
+            {/* =================================================
+                ENCABEZADOS
+            ================================================= */}
             <thead>
               <tr
                 style={{
                   background: colors.bg,
                 }}
               >
+                {/* CHECKBOX TODOS */}
+                <th
+                  style={{
+                    width: 45,
+                    padding: "12px 10px",
+                    textAlign: "center",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={todosSeleccionados}
+                    onChange={toggleSeleccionTodos}
+                    disabled={
+                      filtered.length === 0
+                    }
+                    style={{
+                      width: 16,
+                      height: 16,
+                      cursor:
+                        filtered.length === 0
+                          ? "default"
+                          : "pointer",
+                      accentColor:
+                        colors.plum,
+                    }}
+                  />
+                </th>
+
                 {[
                   "Producto",
                   "Marca",
@@ -881,43 +1031,55 @@ export default function Inventario() {
                   "Margen",
                   "Stock",
                   "",
-                ].map((header, index) => (
+                ].map((h, i) => (
                   <th
-                    key={index}
+                    key={i}
                     style={{
                       textAlign:
-                        index >= 3
+                        i >= 3
                           ? "right"
                           : "left",
 
-                      padding: "12px 16px",
+                      padding:
+                        "12px 16px",
+
                       fontSize: 11.5,
-                      letterSpacing: "0.04em",
-                      textTransform: "uppercase",
-                      color: colors.textSoft,
+
+                      letterSpacing:
+                        "0.04em",
+
+                      textTransform:
+                        "uppercase",
+
+                      color:
+                        colors.textSoft,
+
                       fontWeight: 600,
-                      whiteSpace: "nowrap",
+
+                      whiteSpace:
+                        "nowrap",
                     }}
                   >
-                    {header}
+                    {h}
                   </th>
                 ))}
               </tr>
             </thead>
 
-            {/* ------------------------------------------------
+            {/* =================================================
                 CUERPO
-            ------------------------------------------------ */}
+            ================================================= */}
             <tbody>
               {/* CARGANDO */}
               {loading && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     style={{
                       padding: 28,
                       textAlign: "center",
-                      color: colors.textFaint,
+                      color:
+                        colors.textFaint,
                     }}
                   >
                     Cargando productos...
@@ -927,88 +1089,150 @@ export default function Inventario() {
 
               {/* PRODUCTOS */}
               {!loading &&
-                filtered.map((product, index) => {
-                  const costo = Number(
-                    product.costo ?? 0
-                  );
+                filtered.map((p, i) => {
+                  const costo =
+                    Number(p.costo) || 0;
 
-                  const precio = Number(
-                    product.precio ?? 0
-                  );
+                  const precio =
+                    Number(p.precio) || 0;
 
-                  const margen = precio - costo;
+                  const margen =
+                    precio - costo;
+
+                  const seleccionado =
+                    selectedIds.includes(
+                      p.id
+                    );
 
                   return (
                     <tr
-                      key={product.id}
+                      key={p.id}
                       style={{
                         borderTop:
-                          index === 0
+                          i === 0
                             ? "none"
                             : `1px solid ${colors.borderLight}`,
+
+                        background:
+                          seleccionado
+                            ? colors.bg
+                            : "transparent",
                       }}
                     >
-                      {/* 1. PRODUCTO */}
+                      {/* CHECKBOX */}
                       <td
                         style={{
-                          padding: "12px 16px",
+                          width: 45,
+                          padding:
+                            "12px 10px",
+                          textAlign:
+                            "center",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={
+                            seleccionado
+                          }
+                          onChange={() =>
+                            toggleSeleccion(
+                              p.id
+                            )
+                          }
+                          style={{
+                            width: 16,
+                            height: 16,
+                            cursor: "pointer",
+                            accentColor:
+                              colors.plum,
+                          }}
+                        />
+                      </td>
+
+                      {/* PRODUCTO */}
+                      <td
+                        style={{
+                          padding:
+                            "12px 16px",
                           fontWeight: 500,
                         }}
                       >
-                        {product.nombre}
+                        {p.nombre}
                       </td>
 
-                      {/* 2. MARCA */}
+                      {/* MARCA */}
                       <td
                         style={{
-                          padding: "12px 16px",
-                          color: colors.textMuted,
+                          padding:
+                            "12px 16px",
+                          color:
+                            colors.textMuted,
                         }}
                       >
-                        {product.marca || "—"}
+                        {p.marca || "—"}
                       </td>
 
-                      {/* 3. CATEGORÍA */}
+                      {/* CATEGORÍA */}
                       <td
                         style={{
-                          padding: "12px 16px",
-                          color: colors.textMuted,
+                          padding:
+                            "12px 16px",
+                          color:
+                            colors.textMuted,
                         }}
                       >
-                        {product.categorias?.nombre ||
-                          "—"}
+                        {p.categorias
+                          ?.nombre || "—"}
                       </td>
 
-                      {/* 4. COSTO */}
+                      {/* ===============================
+                          COSTO
+                      =============================== */}
                       <td
                         style={{
-                          padding: "12px 16px",
-                          textAlign: "right",
-                          color: colors.textMuted,
-                          whiteSpace: "nowrap",
+                          padding:
+                            "12px 16px",
+                          textAlign:
+                            "right",
+                          color:
+                            colors.textMuted,
+                          whiteSpace:
+                            "nowrap",
                         }}
                       >
-                        S/ {costo.toFixed(2)}
+                        S/{" "}
+                        {costo.toFixed(2)}
                       </td>
 
-                      {/* 5. PRECIO */}
+                      {/* ===============================
+                          PRECIO
+                      =============================== */}
                       <td
                         style={{
-                          padding: "12px 16px",
-                          textAlign: "right",
+                          padding:
+                            "12px 16px",
+                          textAlign:
+                            "right",
                           fontWeight: 500,
-                          whiteSpace: "nowrap",
+                          whiteSpace:
+                            "nowrap",
                         }}
                       >
-                        S/ {precio.toFixed(2)}
+                        S/{" "}
+                        {precio.toFixed(2)}
                       </td>
 
-                      {/* 6. MARGEN */}
+                      {/* ===============================
+                          MARGEN
+                      =============================== */}
                       <td
                         style={{
-                          padding: "12px 16px",
-                          textAlign: "right",
-                          whiteSpace: "nowrap",
+                          padding:
+                            "12px 16px",
+                          textAlign:
+                            "right",
+                          whiteSpace:
+                            "nowrap",
                         }}
                       >
                         {costo > 0 ? (
@@ -1016,20 +1240,32 @@ export default function Inventario() {
                             style={{
                               fontSize: 12,
                               fontWeight: 600,
-                              color: colors.sageText,
+
+                              color:
+                                colors.sageText,
+
                               background:
                                 colors.sageBg,
-                              padding: "3px 10px",
+
+                              padding:
+                                "3px 10px",
+
                               borderRadius: 12,
+
                               display:
                                 "inline-flex",
+
                               alignItems:
                                 "center",
+
                               whiteSpace:
                                 "nowrap",
                             }}
                           >
-                            +S/ {margen.toFixed(2)}
+                            +S/{" "}
+                            {margen.toFixed(
+                              2
+                            )}
                           </span>
                         ) : (
                           <span
@@ -1044,62 +1280,60 @@ export default function Inventario() {
                         )}
                       </td>
 
-                      {/* 7. STOCK */}
+                      {/* STOCK */}
                       <td
                         style={{
-                          padding: "12px 16px",
-                          textAlign: "right",
+                          padding:
+                            "12px 16px",
+                          textAlign:
+                            "right",
                         }}
                       >
                         <StockBadge
-                          stock={
-                            Number(
-                              product.stock ?? 0
-                            )
-                          }
+                          stock={p.stock}
                           minimo={
-                            Number(
-                              product.stock_minimo ??
-                                3
-                            )
+                            p.stock_minimo
                           }
                         />
                       </td>
 
-                      {/* 8. ACCIONES */}
+                      {/* ACCIONES */}
                       <td
                         style={{
-                          padding: "12px 16px",
-                          textAlign: "right",
-                          whiteSpace: "nowrap",
+                          padding:
+                            "12px 16px",
+                          textAlign:
+                            "right",
+                          whiteSpace:
+                            "nowrap",
                         }}
                       >
                         <i
                           onClick={() =>
-                            abrirEditar(product)
+                            abrirEditar(p)
                           }
                           className="ti ti-edit"
-                          title="Editar"
                           style={{
                             fontSize: 16,
                             color:
                               colors.textFaint,
-                            cursor: "pointer",
+                            cursor:
+                              "pointer",
                             marginRight: 10,
                           }}
                         />
 
                         <i
                           onClick={() =>
-                            eliminar(product.id)
+                            eliminar(p.id)
                           }
                           className="ti ti-trash"
-                          title="Eliminar"
                           style={{
                             fontSize: 16,
                             color:
                               colors.textFaint,
-                            cursor: "pointer",
+                            cursor:
+                              "pointer",
                           }}
                         />
                       </td>
@@ -1112,14 +1346,17 @@ export default function Inventario() {
                 filtered.length === 0 && (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={9}
                       style={{
                         padding: 28,
-                        textAlign: "center",
-                        color: colors.textFaint,
+                        textAlign:
+                          "center",
+                        color:
+                          colors.textFaint,
                       }}
                     >
-                      No se encontraron productos.
+                      No se encontraron
+                      productos.
                     </td>
                   </tr>
                 )}
@@ -1128,18 +1365,22 @@ export default function Inventario() {
         </div>
       </main>
 
-      {/* ======================================================
+      {/* =====================================================
           MODAL NUEVO / EDITAR PRODUCTO
-      ====================================================== */}
+      ===================================================== */}
       {showForm && (
         <div
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(61,36,54,.35)",
+            background:
+              "rgba(61,36,54,.35)",
+
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
+            justifyContent:
+              "center",
+
             zIndex: 50,
             padding: 14,
           }}
@@ -1147,22 +1388,39 @@ export default function Inventario() {
           <form
             onSubmit={guardar}
             style={{
-              background: colors.card,
+              background:
+                colors.card,
+
               borderRadius: 12,
-              padding: "26px 28px",
-              width: "min(380px,100%)",
-              maxHeight: "90vh",
-              overflowY: "auto",
+
+              padding:
+                "26px 28px",
+
+              width:
+                "min(380px,100%)",
+
+              maxHeight:
+                "90vh",
+
+              overflowY:
+                "auto",
             }}
           >
             {/* TÍTULO */}
             <p
               style={{
-                fontFamily: fonts.display,
+                fontFamily:
+                  fonts.display,
+
                 fontSize: 18,
+
                 fontWeight: 600,
-                margin: "0 0 18px",
-                color: colors.plum,
+
+                margin:
+                  "0 0 18px",
+
+                color:
+                  colors.plum,
               }}
             >
               {form.id
@@ -1178,39 +1436,48 @@ export default function Inventario() {
                 type: "text",
                 required: true,
               },
+
               {
                 key: "marca",
                 label: "Marca / Proveedor",
                 type: "text",
               },
+
               {
                 key: "codigo_barras",
                 label: "Código de barras",
                 type: "text",
               },
+
               {
                 key: "precio",
-                label: "Precio de venta (S/)",
+                label:
+                  "Precio de venta (S/)",
                 type: "number",
               },
+
               {
                 key: "costo",
-                label: "Costo del producto (S/)",
+                label:
+                  "Costo del producto (S/)",
                 type: "number",
               },
+
               {
                 key: "stock",
                 label: "Stock actual",
                 type: "number",
               },
+
               {
                 key: "stock_minimo",
-                label: "Stock mínimo (alerta)",
+                label:
+                  "Stock mínimo (alerta)",
                 type: "number",
               },
-            ].map((field) => (
+            ].map((f) => (
               <div
-                key={field.key}
+                key={f.key}
                 style={{
                   marginBottom: 12,
                 }}
@@ -1218,34 +1485,40 @@ export default function Inventario() {
                 <label
                   style={{
                     fontSize: 11.5,
-                    letterSpacing: ".04em",
-                    textTransform: "uppercase",
-                    color: colors.textSoft,
+                    letterSpacing:
+                      ".04em",
+                    textTransform:
+                      "uppercase",
+                    color:
+                      colors.textSoft,
                     fontWeight: 600,
                   }}
                 >
-                  {field.label}
+                  {f.label}
                 </label>
 
                 <input
-                  type={field.type}
-                  required={field.required}
-                  value={form[field.key]}
-                  onChange={(event) =>
+                  type={f.type}
+                  required={f.required}
+                  value={form[f.key]}
+                  onChange={(e) =>
                     setForm({
                       ...form,
-                      [field.key]:
-                        event.target.value,
+                      [f.key]:
+                        e.target.value,
                     })
                   }
                   style={{
                     width: "100%",
-                    padding: "9px 12px",
+                    padding:
+                      "9px 12px",
                     borderRadius: 8,
                     border: `1px solid ${colors.border}`,
-                    background: colors.bg,
+                    background:
+                      colors.bg,
                     fontSize: 13.5,
-                    fontFamily: fonts.body,
+                    fontFamily:
+                      fonts.body,
                     outline: "none",
                     marginTop: 6,
                   }}
@@ -1262,9 +1535,12 @@ export default function Inventario() {
               <label
                 style={{
                   fontSize: 11.5,
-                  letterSpacing: ".04em",
-                  textTransform: "uppercase",
-                  color: colors.textSoft,
+                  letterSpacing:
+                    ".04em",
+                  textTransform:
+                    "uppercase",
+                  color:
+                    colors.textSoft,
                   fontWeight: 600,
                 }}
               >
@@ -1272,22 +1548,27 @@ export default function Inventario() {
               </label>
 
               <select
-                value={form.categoria_id}
-                onChange={(event) =>
+                value={
+                  form.categoria_id
+                }
+                onChange={(e) =>
                   setForm({
                     ...form,
                     categoria_id:
-                      event.target.value,
+                      e.target.value,
                   })
                 }
                 style={{
                   width: "100%",
-                  padding: "9px 12px",
+                  padding:
+                    "9px 12px",
                   borderRadius: 8,
                   border: `1px solid ${colors.border}`,
-                  background: colors.bg,
+                  background:
+                    colors.bg,
                   fontSize: 13.5,
-                  fontFamily: fonts.body,
+                  fontFamily:
+                    fonts.body,
                   outline: "none",
                   marginTop: 6,
                 }}
@@ -1296,14 +1577,16 @@ export default function Inventario() {
                   Sin categoría
                 </option>
 
-                {categorias.map((category) => (
-                  <option
-                    key={category.id}
-                    value={category.id}
-                  >
-                    {category.nombre}
-                  </option>
-                ))}
+                {categorias.map(
+                  (c) => (
+                    <option
+                      key={c.id}
+                      value={c.id}
+                    >
+                      {c.nombre}
+                    </option>
+                  )
+                )}
               </select>
             </div>
 
@@ -1321,14 +1604,18 @@ export default function Inventario() {
                 }
                 style={{
                   flex: 1,
-                  padding: "11px 0",
+                  padding:
+                    "11px 0",
                   borderRadius: 8,
                   border: `1px solid ${colors.border}`,
-                  background: colors.card,
-                  color: colors.textMuted,
+                  background:
+                    colors.card,
+                  color:
+                    colors.textMuted,
                   fontSize: 13.5,
                   fontWeight: 500,
-                  cursor: "pointer",
+                  cursor:
+                    "pointer",
                 }}
               >
                 Cancelar
@@ -1339,15 +1626,20 @@ export default function Inventario() {
                 disabled={saving}
                 style={{
                   flex: 1,
-                  padding: "11px 0",
+                  padding:
+                    "11px 0",
                   borderRadius: 8,
                   border: "none",
-                  background: colors.rose,
-                  color: colors.plum,
+                  background:
+                    colors.rose,
+                  color:
+                    colors.plum,
                   fontSize: 13.5,
                   fontWeight: 600,
-                  cursor: "pointer",
-                  opacity: saving ? 0.7 : 1,
+                  cursor:
+                    "pointer",
+                  opacity:
+                    saving ? 0.7 : 1,
                 }}
               >
                 {saving
